@@ -7,9 +7,13 @@ import Grid from '@mui/material/Grid';
 import Typography from '@mui/material/Typography';
 import parse from 'autosuggest-highlight/parse';
 import { debounce } from '@mui/material/utils';
-import axios from 'axios';
+import { useDispatch, useSelector } from 'react-redux';
+import io from 'socket.io-client';
+import "../../index.css"
+
 
 import CoffeeIcon from '@mui/icons-material/Coffee';
+import { useAuth0 } from '@auth0/auth0-react';
 
 // This key was created specifically for the demo in mui.com.
 // You need to create a new one for your application.
@@ -35,18 +39,31 @@ function loadScript(src, position, id) {
 const autocompleteService = { current: null };
 
 export default function GoogleMaps() {
+
   const [location, setLocation] = React.useState({});
   const [value, setValue] = React.useState(null);
   const [inputValue, setInputValue] = React.useState('');
   const [options, setOptions] = React.useState([]);
   const loaded = React.useRef(false);
+  const { getAccessTokenSilently, user } = useAuth0();
+  const dispatch = useDispatch();
+  const placeResults = useSelector((store) => store.searchPlace);
+  const token = getAccessTokenSilently().then(token => token);
+
+  const { email } = user;
+
+  const socket = io('http://localhost:3000'); // replace with your server URL
+
+  socket.on('connect', () => {
+    console.log('Connected to WebSocket server');
+  });
 
   const findPlace = (placeId) => {
     let map;
     let service;
-    let infowindow;
+    let infoWindow;
 
-    infowindow = new google.maps.InfoWindow();
+    infoWindow = new google.maps.InfoWindow();
     map = new google.maps.Map(document.getElementById("results"), {
       center: location.geometry.location,
       zoom: 15,
@@ -65,12 +82,12 @@ export default function GoogleMaps() {
       }
     });
   }
-  const getPlace = (location) => {
+  const getPlace = async (location) => {
     let map;
     let service;
-    let infowindow;
+    let infoWindow;
 
-    infowindow = new google.maps.InfoWindow();
+    infoWindow = new google.maps.InfoWindow();
     map = new google.maps.Map(document.getElementById("results"), {
       center: location.geometry.location,
       zoom: 15,
@@ -85,32 +102,44 @@ export default function GoogleMaps() {
     };
 
     service = new google.maps.places.PlacesService(map);
-    service.nearbySearch(request, (results, status) => {
+
+    service.nearbySearch(request, async (results, status) => {
       if (status === google.maps.places.PlacesServiceStatus.OK && results) {
-        for (let i = 0; i < results.length; i++) {
-          service.getDetails({placeId: results[i].place_id}, async (place, status) => {
-            const newPlace = await axios.post('http://localhost:3000/places', {
-              id: place.place_id,
-              name: place.name,
-              latitude: place.geometry.location.lat(),
-              longitude: place.geometry.location.lng(),
-              metadata: {
-                phone_number: place.formatted_phone_number,
-                address: place.formatted_address,
-                rating: place.rating,
-                photo: place.photos[0].getUrl(),
-                //opening_hours: place.opening_hours.weekday_text,
-                reviews: place.reviews,
-                business_status: place.business_status,
-                website: place.website
-              }
-            });
-            console.log(newPlace);
-          });
-        }
-      }
+        results.map((result) => {
+          service.getDetails({ placeId: result.place_id }, (place, status) => {
+            if (status === google.maps.places.PlacesServiceStatus.OK && place.place_id) {
+              console.log('PHOTOS',place.photos)
+              if(Array.isArray(place.photos)){
+              const photos = place.photos.map((photo) => photo.getUrl());
+              dispatch({
+                type: 'SEARCH_PLACE',
+                payload: {
+                  email: email,
+                  id: place.place_id,
+                  name: place.name,
+                  latitude: place.geometry.location.lat(),
+                  longitude: place.geometry.location.lng(),
+                  metadata: {
+                    phone_number: place.formatted_phone_number,
+                    address: place.formatted_address,
+                    rating: place.rating,
+                    photo: place.photos[0].getUrl(),
+                    photos: photos,
+                    hours: place?.opening_hours?.weekday_text,
+                    business_status: place.business_status,
+                    website: place.website
+                  }
+                }
+
+                  });
+                }}
+              })
+                });
+            }
     });
-  };
+  }
+
+
 
   const reverseGeocode = ({ latitude: lat, longitude: lng }) => {
     const url = `${geocodeApi}?key=${apiKey}&latlng=${lat},${lng}`;
@@ -157,6 +186,41 @@ export default function GoogleMaps() {
   );
 
 
+  // Send the place results to the server
+   React.useEffect( () => {
+
+
+     // Send a message to the server
+    socket.emit('placeSent', placeResults);
+
+    socket.on('message', (message) => {
+      console.log('Received message:', message);
+    });
+
+    socket.on('blogSent', (blog) => {
+      if(blog.favorite){
+        dispatch({
+          type: 'FAV_BLOG_SENT',
+          payload: blog
+        });
+        }
+      console.log('Received blog:', blog);
+      dispatch({
+        type: 'BLOG_CREATED',
+        payload: blog
+      });
+    });
+
+    /*axios.post('http://localhost:3000/openai/prompt', placeResults, {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    }).then((response) => {
+      console.log(response);
+    });
+  console.log('STATE', placeResults);*/
+  }, [placeResults]);
+
   React.useEffect(() => {
     let active = true;
 
@@ -197,7 +261,7 @@ export default function GoogleMaps() {
   }, [value, inputValue, fetchPredictions]);
 
   return (
-
+    <div>
     <Grid
       container
       spacing={2}
@@ -205,7 +269,7 @@ export default function GoogleMaps() {
       alignItems="center"
       justifyContent="center"
       sx={{ minHeight: '100vh' }}
-    >
+      bgcolor="#f3cb9f">
       <Autocomplete
         id="google-map-demo"
         sx={{ width: 300 }}
@@ -266,12 +330,11 @@ export default function GoogleMaps() {
           );
         }}
       />
-      <div id='results'>
-
-      </div>
     </Grid>
-
-)
+  <div id='results'>
+  </div>
+  </div>
+  )
 
 }
 
