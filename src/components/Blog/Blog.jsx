@@ -13,7 +13,6 @@ import FavoriteIcon from '@mui/icons-material/Favorite';
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import MuiMarkdown from 'mui-markdown';
-
 import { useSelector, useDispatch } from 'react-redux';
 import io from 'socket.io-client';
 import { ImageList, ImageListItem } from '@mui/material';
@@ -36,9 +35,9 @@ const ExpandMore = styled((props) => {
 export default function Blog() {
   const { user } = useAuth0();
   const [expanded, setExpanded] = React.useState(false);
+  const [blogList, setBlogList] = React.useState([]);
 
   const blogResults = useSelector((store) => store.blogCreated);
-  const [blogList, setBlogList] = React.useState([]);
   const showFav = useSelector((store) => store.showFavorites);
   const favBlogs = useSelector((store) => store.favoriteBlogs);
   const dispatch = useDispatch();
@@ -50,97 +49,100 @@ export default function Blog() {
   const handleBlogFavoriteClick = async (blog) => {
     let favorites;
 
-    if(blog.favorite) {
+    if (blog.favorite) {
       favorites = await (await axios.delete(`http://localhost:3000/blogs/${blog.id}/favorites/${user.email}`)).data;
       console.log(`Delete FAVORITE: `, favorites);
+      if(Array.isArray(favorites)) {
+        dispatch({ type: 'FAV_BLOG_DELETED', payload: favorites});
+      } else {
+        dispatch({ type: 'FAV_BLOG_DELETED', payload: favorites });
+      }
+
     } else {
       favorites = await (await axios.post(`http://localhost:3000/blogs/${blog.id}/favorites`, {
         id: blog.id,
         email: user.email
       })).data;
       console.log(`Create FAVORITE: `, favorites);
+      if(Array.isArray(favorites)) {
+        dispatch({ type: 'FAV_BLOG_ADDED', payload: favorites});
+      } else {
+        dispatch({ type: 'FAV_BLOG_ADDED', payload: favorites});
+      }
     }
+  }
 
-    favorites.map((fav) => {
-      console.log('Dispatching...', fav);
-      dispatch({type: 'FAV_BLOG_SENT', payload: fav});
-    });
-  };
+    useEffect(() => {
+      setBlogList(blogResults);
+    }, [favBlogs]);
 
-  useEffect(() => {
-    console.log('Fav Blogs', favBlogs);
-    const blogSet = showFav ? favBlogs : blogResults;
-    console.log('BLOG SET', blogSet);
+    return (
+      <div>
+        <Box display="flex" flexDirection="column" alignItems="center">
+          {blogResults.map((blog) => {
 
-    setBlogList(blogSet);
+              if (!blog.content) {
+                console.log('Bad Blog', blog);
+                return;
+              }
 
-    console.log('BLOG LIST', blogList);
-  }, [showFav]);
+              const content = JSON.parse(blog.content);
+              return (
+                <Box key={`box-${blog.id}`} mb={8} width="100%" display="flex" justifyContent="center">
+                  <Card sx={{ maxWidth: 800 }} key={`card-${blog.id}`}>
+                    <CardHeader
+                      title={blog.title}
+                      key={`ch-${blog.id}`}
 
-
-  return (
-    <div>
-      <Box display="flex" flexDirection="column" alignItems="center">
-        { blogList.map((blog) => {
-          if(!blog.content){
-            console.log('Baad Blog', blog);
-            return;
-          }
-        const content = JSON.parse(blog.content);
-        return(
-        <Box key={`box-${blog.id}`} mb={8} width="100%" display="flex" justifyContent="center">
-        <Card sx={{ maxWidth: 800 }} key={`card-${blog.id}`}>
-          <CardHeader
-            title={blog.title}
-            key={`ch-${blog.id}`}
-
-          />
-          <CardMedia
-            component="img"
-            key={`cm-${blog.id}`}
-            image={content.photos[content.photos.length - 1]}
-          />
-          <CardActions disableSpacing key={`ca-${blog.id}`}>
-            <IconButton id={blog.id} key={`ib-${blog.id}`}
-                         aria-label="add to favorites"
-                        onClick={() => handleBlogFavoriteClick(blog)}
-            >
-              {blog.favorite ? <FavoriteIcon /> : <FavoriteBorderIcon />}
-            </IconButton>
-            <ExpandMore
-              key={`cem-${blog.id}`}
-              expand={expanded}
-              onClick={handleExpandClick}
-              aria-expanded={expanded}
-              aria-label="show more"
-            >
-              <ExpandMoreIcon />
-            </ExpandMore>
-          </CardActions>
-          <Collapse key={`col-${blog.id}`} in={expanded} timeout="auto" unmountOnExit>
-            <CardContent key={`cc-${blog.id}`}>
-              <Typography mode="markdown" option={{all: { gutterBottom: true, color: 'primary'}, h1: { align: 'center'}}}>
-                <MuiMarkdown>{content.content}</MuiMarkdown>
-              </Typography>
-              <ImageList variant="masonry" cols={3} gap={8}>
-                {content.photos.map((item) => (
-                  <ImageListItem key={item}>
-                    <img
-                      srcSet={`${item}?w=248&fit=crop&auto=format&dpr=2 2x`}
-                      src={`${item}?w=248&fit=crop&auto=format`}
-                      alt={item}
-                      loading="lazy"
                     />
-                  </ImageListItem>
-                ))}
-              </ImageList>
-            </CardContent>
-          </Collapse>
-        </Card>
-      </Box>
-      )}
-      )}
+                    <CardMedia
+                      component="img"
+                      key={`cm-${blog.id}`}
+                      image={content.photos[content.photos.length - 1]}
+                    />
+                    <CardActions disableSpacing key={`ca-${blog.id}`}>
+                      <IconButton id={blog.id} key={`ib-${blog.id}`}
+                                  aria-label="add to favorites"
+                                  onClick={() => handleBlogFavoriteClick(blog)}
+                      >
+                        {blog.favorite ? <FavoriteIcon /> : <FavoriteBorderIcon />}
+                      </IconButton>
+                      <ExpandMore
+                        key={`cem-${blog.id}`}
+                        expand={expanded}
+                        onClick={handleExpandClick}
+                        aria-expanded={expanded}
+                        aria-label="show more"
+                      >
+                        <ExpandMoreIcon />
+                      </ExpandMore>
+                    </CardActions>
+                    <Collapse key={`col-${blog.id}`} in={expanded} timeout="auto" unmountOnExit>
+                      <CardContent key={`cc-${blog.id}`}>
+                        <Typography mode="markdown"
+                                    option={{ all: { gutterBottom: true, color: 'primary' }, h1: { align: 'center' } }}>
+                          <MuiMarkdown>{content.content}</MuiMarkdown>
+                        </Typography>
+                        <ImageList variant="masonry" cols={3} gap={8}>
+                          {content?.photos?.map((item) => (
+                            <ImageListItem key={item}>
+                              <img
+                                srcSet={`${item}?w=248&fit=crop&auto=format&dpr=2 2x`}
+                                src={`${item}?w=248&fit=crop&auto=format`}
+                                alt={item}
+                                loading="lazy"
+                              />
+                            </ImageListItem>
+                          ))}
+                        </ImageList>
+                      </CardContent>
+                    </Collapse>
+                  </Card>
+                </Box>
+              )
+            }
+          )}
         </Box>
-    </div>
-  )
+      </div>
+    )
 }

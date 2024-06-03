@@ -1,3 +1,4 @@
+import { CssBaseline } from '@mui/material';
 import * as React from 'react';
 import Box from '@mui/material/Box';
 import TextField from '@mui/material/TextField';
@@ -8,11 +9,10 @@ import Typography from '@mui/material/Typography';
 import parse from 'autosuggest-highlight/parse';
 import { debounce } from '@mui/material/utils';
 import { useDispatch, useSelector } from 'react-redux';
-import io from 'socket.io-client';
+import io from 'socket.io-client'
+import { includes, find } from 'lodash'
 import "../../index.css"
 
-
-import CoffeeIcon from '@mui/icons-material/Coffee';
 import { useAuth0 } from '@auth0/auth0-react';
 
 // This key was created specifically for the demo in mui.com.
@@ -123,6 +123,7 @@ export default function GoogleMaps() {
                     phone_number: place.formatted_phone_number,
                     address: place.formatted_address,
                     rating: place.rating,
+                    reviews: place.reviews,
                     photo: place.photos[0].getUrl(),
                     photos: photos,
                     hours: place?.opening_hours?.weekday_text,
@@ -186,40 +187,61 @@ export default function GoogleMaps() {
   );
 
 
+
   // Send the place results to the server
    React.useEffect( () => {
-
-
      // Send a message to the server
-    socket.emit('placeSent', placeResults);
+     socket.emit('placeSent', placeResults);
 
-    socket.on('message', (message) => {
-      console.log('Received message:', message);
-    });
+     socket.on('message', (message) => {
+       console.log('Received message:', message);
+     });
 
-    socket.on('blogSent', (blog) => {
-      if(blog.favorite){
-        dispatch({
-          type: 'FAV_BLOG_SENT',
-          payload: blog
-        });
-        }
-      console.log('Received blog:', blog);
-      dispatch({
-        type: 'BLOG_CREATED',
-        payload: blog
-      });
-    });
+     socket.on('blogSent', (blog) => {
+       if(Array.isArray(blog)) {
+         const allBlogs = blog.filter((blog) => {
+           const place = find(placeResults, { id: blog.place_id });
+           console.log('Place Found:', place, blog);
+           if(place) {
+             return true;
+           } else {
+             return false;
+           }
+         });
 
-    /*axios.post('http://localhost:3000/openai/prompt', placeResults, {
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    }).then((response) => {
-      console.log(response);
-    });
-  console.log('STATE', placeResults);*/
-  }, [placeResults]);
+         dispatch({ type: 'ALL_BLOGS_SENT', payload: allBlogs });
+
+         const favBlogs = blog.filter((blog) => {
+           const place = find(placeResults, { id: blog.place_id });
+           console.log('Place Found:', place, blog);
+           if(place && blog.favorite) {
+             return true;
+           } else {
+             return false;
+           }
+         });
+
+         dispatch({ type: 'FAV_BLOGS_SENT', payload: favBlogs });
+       } else {
+         const place = find(placeResults, { id: blog.place_id });
+
+         if (place) {
+           console.log('Received blog:', blog);
+           dispatch({
+             type: 'BLOG_CREATED',
+             payload: blog
+           });
+
+           if (blog.favorite) {
+             console.log('Favorite Found:', blog);
+             dispatch({ type: 'FAV_BLOG_SENT', payload: blog });
+           }
+         } else {
+           console.log('Place not found:', blog);
+         }
+       }
+     });
+   }, [placeResults])
 
   React.useEffect(() => {
     let active = true;
